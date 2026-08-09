@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MM2 - Sorteo Pro</title>
+    <style>
+        body { 
+            margin: 0; 
+            background: radial-gradient(circle at center, #1e1e1e 0%, #0a0a0a 100%);
+            color: #fff; 
+            display: flex; flex-direction: column; align-items: center; 
+            justify-content: center; min-height: 100vh; font-family: 'Segoe UI', sans-serif;
+        }
+        
+        .container { text-align: center; width: 100%; max-width: 350px; }
+        h1 { color: #f0f0f0; margin: 0 0 10px 0; font-size: 1.6rem; letter-spacing: 1px; }
+        
+        .roulette-wrapper { position: relative; width: 280px; height: 280px; margin: 20px auto; }
+        
+        .pointer { 
+            position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
+            width: 0; height: 0; border-left: 10px solid transparent; 
+            border-right: 10px solid transparent; border-top: 20px solid #ff4757; z-index: 10;
+            filter: drop-shadow(0 2px 5px rgba(255,71,87,0.5));
+        }
+
+        #wheelCanvas { 
+            width: 100%; height: 100%; border-radius: 50%; 
+            border: 6px solid #2f2f2f; box-shadow: 0 0 30px rgba(0,0,0,0.5);
+        }
+
+        button { 
+            padding: 15px 40px; font-size: 1.1rem; background: #ff4757; 
+            color: white; border: none; border-radius: 50px; cursor: pointer;
+            margin-top: 20px; font-weight: 600; text-transform: uppercase;
+            transition: transform 0.2s, background 0.3s;
+        }
+        button:hover { background: #ff6b81; transform: scale(1.05); }
+        button:disabled { background: #444; transform: scale(1); }
+
+        #toast {
+            visibility: hidden; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.95); color: #333; padding: 30px; border-radius: 20px;
+            text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            z-index: 100; opacity: 0; transition: opacity 0.3s, transform 0.5s ease-out;
+        }
+        #toast.show { visibility: visible; opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>MM2 - Sorteo</h1>
+        <div class="roulette-wrapper">
+            <div class="pointer"></div>
+            <canvas id="wheelCanvas" width="500" height="500"></canvas>
+        </div>
+        <button id="btn" onclick="spin()">¡GIRAR!</button>
+    </div>
+
+    <div id="toast">
+        <div style="font-size: 3rem; margin-bottom: 10px;">🏆</div>
+        <strong style="font-size: 1.2rem;">¡GANASTE!</strong><br>
+        <span id="win-name"></span><br>
+        <small>Envía captura a TikTok.</small>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('wheelCanvas');
+        const ctx = canvas.getContext('2d');
+        const btn = document.getElementById('btn');
+        const toast = document.getElementById('toast');
+        const total = 450;
+        let audioCtx;
+
+        // Configuración: 440 Nada, 10 Premios
+        const items = Array(440).fill({name: "Nada", color: "#1a1a1a"});
+        items.push(
+            {name: "Común", color: "#90a4ae"}, {name: "Común", color: "#90a4ae"},
+            {name: "Raro", color: "#2196f3"}, {name: "Raro", color: "#2196f3"},
+            {name: "Épico", color: "#9c27b0"}, {name: "Épico", color: "#9c27b0"},
+            {name: "Legendaria", color: "#f44336"}, {name: "Legendaria", color: "#f44336"},
+            {name: "Suerte +", color: "#ffeb3b"}, {name: "Suerte +", color: "#ffeb3b"}
+        );
+        items.sort(() => Math.random() - 0.5);
+
+        function draw() {
+            ctx.clearRect(0,0,500,500);
+            items.forEach((item, i) => {
+                const angle = i * (2 * Math.PI / total) - Math.PI / 2;
+                ctx.beginPath(); ctx.moveTo(250, 250);
+                ctx.arc(250, 250, 230, angle, angle + (2 * Math.PI / total));
+                ctx.fillStyle = item.color; ctx.fill();
+            });
+        }
+        draw();
+
+        function initAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        function playTick() {
+            initAudio();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.frequency.value = 400;
+            gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.05);
+        }
+
+        function playWoosh() {
+            initAudio();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.5);
+            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.5);
+        }
+
+        function spin() {
+            btn.disabled = true;
+            toast.classList.remove('show');
+            
+            const targetIndex = Math.floor(Math.random() * total);
+            const sliceDeg = 360 / total;
+            const finalRotation = (360 * 6) + (360 - (targetIndex * sliceDeg) - (sliceDeg / 2));
+
+            canvas.style.transition = 'none';
+            canvas.style.transform = 'rotate(0deg)';
+            canvas.offsetHeight; 
+            
+            canvas.style.transition = 'transform 7s cubic-bezier(0.1, 0.75, 0.25, 1)';
+            canvas.style.transform = `rotate(${finalRotation}deg)`;
+
+            let t = 0;
+            let soundInterval = setInterval(() => { playTick(); t++; if (t > 60) clearInterval(soundInterval); }, 100);
+
+            setTimeout(() => {
+                btn.disabled = false;
+                const result = items[targetIndex];
+                if (result.name !== "Nada") {
+                    document.getElementById('win-name').innerText = result.name;
+                    playWoosh();
+                    toast.classList.add('show');
+                }
+            }, 7500);
+        }
+    </script>
+</body>
+</html>
